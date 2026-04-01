@@ -1,63 +1,124 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import React, { useState, useEffect, useRef } from "react";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+const GAME_DURATION = 30; // seconds
+const BUG_LIFETIME = 1000; // ms
+const MIN_SPAWN = 500; // ms
+const MAX_SPAWN = 1000; // ms
+const BUG_SIZE = 40; // px
+
+function getRandomPosition() {
+  const x = Math.random() * (window.innerWidth - BUG_SIZE - 20) + 10;
+  const y = Math.random() * (window.innerHeight - BUG_SIZE - 100) + 60;
+  return { x, y };
+}
+
+export default function App() {
+  const [gameState, setGameState] = useState("ready"); // ready | running | over
+  const [score, setScore] = useState(0);
+  const [timer, setTimer] = useState(GAME_DURATION);
+  const [bugs, setBugs] = useState([]);
+  const bugId = useRef(0);
+  const timerRef = useRef();
+  const spawnRef = useRef();
+
+  // Timer effect
+  useEffect(() => {
+    if (gameState !== "running") return;
+    timerRef.current = setInterval(() => {
+      setTimer((t) => {
+        if (t <= 1) {
+          clearInterval(timerRef.current);
+          setGameState("over");
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [gameState]);
+
+  // Bug spawn effect
+  useEffect(() => {
+    if (gameState !== "running") return;
+    let spawnTimeout;
+    function spawnBug() {
+      setBugs((bugs) => [
+        ...bugs,
+        {
+          id: bugId.current++,
+          ...getRandomPosition(),
+        },
+      ]);
+      const nextSpawn = Math.random() * (MAX_SPAWN - MIN_SPAWN) + MIN_SPAWN;
+      spawnTimeout = setTimeout(spawnBug, nextSpawn);
+    }
+    spawnBug();
+    return () => clearTimeout(spawnTimeout);
+  }, [gameState]);
+
+  // Bug lifetime effect
+  useEffect(() => {
+    if (!bugs.length) return;
+    const timers = bugs.map((bug) =>
+      setTimeout(() => {
+        setBugs((bugs) => bugs.filter((b) => b.id !== bug.id));
+      }, BUG_LIFETIME)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [bugs]);
+
+  function startGame() {
+    setScore(0);
+    setTimer(GAME_DURATION);
+    setBugs([]);
+    setGameState("running");
+    bugId.current = 0;
+  }
+
+  function handleBugClick(id) {
+    setScore((s) => s + 1);
+    setBugs((bugs) => bugs.filter((b) => b.id !== id));
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
+    <div className="container">
+      <h1>🐞 BugHunter</h1>
+      <div className="hud">
+        <span>Score: {score}</span>
+        <span>Time: {timer}s</span>
+      </div>
+      {gameState === "ready" && (
+        <button className="start-btn" onClick={startGame}>
+          Start
         </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      )}
+      {gameState === "running" && (
+        <div className="game-area">
+          {bugs.map((bug) => (
+            <div
+              key={bug.id}
+              className="bug"
+              style={{ left: bug.x, top: bug.y, width: BUG_SIZE, height: BUG_SIZE }}
+              onClick={() => handleBugClick(bug.id)}
+            >
+              🐞
+            </div>
+          ))}
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
+      )}
+      {gameState === "over" && (
+        <div className="game-over">
+          <h2>Game Over!</h2>
+          <p>Your score: {score}</p>
+          <button className="start-btn" onClick={startGame}>
+            Play Again
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
           <p>Join the Vite community</p>
           <ul>
             <li>
