@@ -1,182 +1,169 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./App.css";
 
-const GAME_DURATION = 30; // seconds
-const BUG_LIFETIME = 1000; // ms
-const MIN_SPAWN = 500; // ms
-const MAX_SPAWN = 1000; // ms
-const BUG_SIZE = 40; // px
+const GAME_DURATION = 30;
+const BUG_SIZE = 40;
+
+const LEVELS = {
+  facile: {
+    spawnRate: 800,
+    lifetime: 1500,
+    maxBugs: 5,
+  },
+  difficile: {
+    spawnRate: 500,
+    lifetime: 1200,
+    quickLifetime: 700,
+    maxBugs: 7,
+  },
+};
 
 function getRandomPosition() {
-  const x = Math.random() * (window.innerWidth - BUG_SIZE - 20) + 10;
-  const y = Math.random() * (window.innerHeight - BUG_SIZE - 100) + 60;
-  return { x, y };
+  return {
+    x: Math.random() * (600 - BUG_SIZE),
+    y: Math.random() * (350 - BUG_SIZE),
+  };
 }
 
 export default function App() {
-  const [gameState, setGameState] = useState("ready"); // ready | running | over
+  const [gameState, setGameState] = useState("ready");
   const [score, setScore] = useState(0);
   const [timer, setTimer] = useState(GAME_DURATION);
   const [bugs, setBugs] = useState([]);
-  const bugId = useRef(0);
-  const timerRef = useRef();
-  const spawnRef = useRef();
+  const [level, setLevel] = useState("facile");
 
-  // Timer effect
+  const bugId = useRef(0);
+
+  // 🎯 TIMER
   useEffect(() => {
     if (gameState !== "running") return;
-    timerRef.current = setInterval(() => {
+
+    const interval = setInterval(() => {
       setTimer((t) => {
         if (t <= 1) {
-          clearInterval(timerRef.current);
+          clearInterval(interval);
           setGameState("over");
           return 0;
         }
         return t - 1;
       });
     }, 1000);
-    return () => clearInterval(timerRef.current);
+
+    return () => clearInterval(interval);
   }, [gameState]);
 
-  // Bug spawn effect
+  // 🐞 SPAWN BUGS
   useEffect(() => {
     if (gameState !== "running") return;
-    let spawnTimeout;
-    function spawnBug() {
-      setBugs((bugs) => [
-        ...bugs,
-        {
-          id: bugId.current++,
-          ...getRandomPosition(),
-        },
-      ]);
-      const nextSpawn = Math.random() * (MAX_SPAWN - MIN_SPAWN) + MIN_SPAWN;
-      spawnTimeout = setTimeout(spawnBug, nextSpawn);
-    }
-    spawnBug();
-    return () => clearTimeout(spawnTimeout);
-  }, [gameState]);
 
-  // Bug lifetime effect
+    const interval = setInterval(() => {
+      setBugs((prev) => {
+        if (prev.length >= LEVELS[level].maxBugs) return prev;
+
+        const isQuick =
+          level === "difficile" && Math.random() < 0.4;
+
+        return [
+          ...prev,
+          {
+            id: bugId.current++,
+            ...getRandomPosition(),
+            quick: isQuick,
+          },
+        ];
+      });
+    }, LEVELS[level].spawnRate);
+
+    return () => clearInterval(interval);
+  }, [gameState, level]);
+
+  // ⏳ DISPARITION BUGS
   useEffect(() => {
-    if (!bugs.length) return;
-    const timers = bugs.map((bug) =>
-      setTimeout(() => {
-        setBugs((bugs) => bugs.filter((b) => b.id !== bug.id));
-      }, BUG_LIFETIME)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [bugs]);
+    if (gameState !== "running") return;
 
+    const timeouts = bugs.map((bug) => {
+      const lifetime =
+        level === "difficile" && bug.quick
+          ? LEVELS[level].quickLifetime
+          : LEVELS[level].lifetime;
+
+      return setTimeout(() => {
+        setBugs((current) =>
+          current.filter((b) => b.id !== bug.id)
+        );
+      }, lifetime);
+    });
+
+    return () => timeouts.forEach(clearTimeout);
+  }, [bugs, level, gameState]);
+
+  // ▶️ START
   function startGame() {
     setScore(0);
     setTimer(GAME_DURATION);
     setBugs([]);
-    setGameState("running");
     bugId.current = 0;
+    setGameState("running");
   }
 
-  function handleBugClick(id) {
-    setScore((s) => s + 1);
-    setBugs((bugs) => bugs.filter((b) => b.id !== id));
+  // 🎯 CLICK BUG
+  function handleBugClick(bug) {
+    setBugs((prev) => prev.filter((b) => b.id !== bug.id));
+
+    if (level === "difficile" && bug.quick) {
+      setScore((s) => s + 2); // 🔴 rapide = 2 points
+    } else {
+      setScore((s) => s + 1); // 🟡 normal = 1 point
+    }
   }
 
   return (
     <div className="container">
       <h1>🐞 BugHunter</h1>
+
       <div className="hud">
         <span>Score: {score}</span>
         <span>Time: {timer}s</span>
       </div>
+
       {gameState === "ready" && (
-        <button className="start-btn" onClick={startGame}>
-          Start
-        </button>
+        <>
+          <select value={level} onChange={(e) => setLevel(e.target.value)}>
+            <option value="facile">Facile</option>
+            <option value="difficile">Difficile</option>
+          </select>
+
+          <button onClick={startGame}>Start</button>
+        </>
       )}
+
       {gameState === "running" && (
         <div className="game-area">
           {bugs.map((bug) => (
             <div
               key={bug.id}
-              className="bug"
-              style={{ left: bug.x, top: bug.y, width: BUG_SIZE, height: BUG_SIZE }}
-              onClick={() => handleBugClick(bug.id)}
+              className={`bug ${bug.quick ? "bug-fast" : "bug-normal"}`}
+              style={{
+                left: bug.x,
+                top: bug.y,
+                width: BUG_SIZE,
+                height: BUG_SIZE,
+              }}
+              onClick={() => handleBugClick(bug)}
             >
               🐞
             </div>
           ))}
         </div>
       )}
+
       {gameState === "over" && (
         <div className="game-over">
-          <h2>Game Over!</h2>
-          <p>Your score: {score}</p>
-          <button className="start-btn" onClick={startGame}>
-            Play Again
-          </button>
+          <h2>Game Over</h2>
+          <p>Score: {score}</p>
+          <button onClick={startGame}>Rejouer</button>
         </div>
       )}
     </div>
   );
 }
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
-}
-
-export default App
